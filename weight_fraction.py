@@ -10,7 +10,7 @@ def pie_plot(oe, fuel, payload):
     plt.pie(weights, autopct=percentage, colors=color(weights), labels=labels, startangle=90, wedgeprops=pie_wedges)
     plt.legend(labels=weight_type, title=f'Weight types: \n(MTOW = {mtow} kg)', loc='upper left')
     plt.tight_layout()
-    # plt.savefig('plots/part1_weight_pie.png', dpi=300)
+    plt.savefig('plots/part1_weight_pie.png', dpi=300)
     plt.show()
 
 
