@@ -1,10 +1,9 @@
 from pie_setting import *
+from ac_parameters import *
 
-mtow = 23000  # kg
 
-
-def pie_plot(oew, fw, plw):
-    weights = np.array([oew, fw, plw])
+def pie_plot(oe, fuel, payload):
+    weights = np.array([oe, fuel, payload])
     weight_type = ["OEW", "Max fuel Weight", "Max payload Weight"]
     labels = [f'{w} kg \n{round(w/mtow * 100, 2)}% MTOW' for w in weights]
 
@@ -15,4 +14,4 @@ def pie_plot(oew, fw, plw):
     plt.show()
 
 
-pie_plot(13600, 5000, 7400)
+pie_plot(oew, fw, plw)
