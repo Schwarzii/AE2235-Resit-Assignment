@@ -3,20 +3,13 @@ import numpy as np
 from scipy.interpolate import interp1d
 from matplotlib.ticker import MultipleLocator
 from ac_parameters import *
-
-
-def lemac(arm):
-    return (arm - lemac_arm) / mac * 100
-
-
-def to_datum(arm):
-    return arm / 100 * mac + lemac_arm
+from CG_calc import lemac, Aircraft
 
 
 class LoadDiagram:
     def __init__(self, init_mass, init_cg, cmap='Set2', margin=2):
         self.acc_mass = init_mass
-        self.acc_moment = init_mass * init_cg
+        self.acc_moment = [init_mass * init_cg, init_mass * init_cg]
 
         self.load_mass = {'OEW': [np.array([init_mass])]}
         self.load_cg = {'OEW': [np.array([init_cg])]}
@@ -28,13 +21,13 @@ class LoadDiagram:
         self.cmap = cmap
         self.margin = margin
 
-    def calculate(self, payload, mass, arm, arm_conversion=True, loaded=False):
+    def calculate(self, payload, mass, arm, arm_conversion=True, loaded=False, fwd=True):
         acc_mass = self.acc_mass + np.hstack([0, np.cumsum(mass)])
 
         if arm_conversion:
             arm = lemac(arm)
         moment = mass * arm
-        acc_moment = self.acc_moment + np.hstack([0, np.cumsum(moment)])
+        acc_moment = self.acc_moment[not fwd] + np.hstack([0, np.cumsum(moment)])
         cg = acc_moment / acc_mass
 
         self.cg_min = min(np.min(cg), self.cg_min)
@@ -42,7 +35,10 @@ class LoadDiagram:
 
         if loaded:
             self.acc_mass = acc_mass[-1]
-            self.acc_moment = acc_moment[-1]
+        if fwd:
+            self.acc_moment[0] = acc_moment[-1]
+        else:
+            self.acc_moment[1] = acc_moment[-1]
 
         if payload in self.load_mass:
             self.load_mass[payload].append(acc_mass)
@@ -51,53 +47,99 @@ class LoadDiagram:
             self.load_mass[payload] = [acc_mass]
             self.load_cg[payload] = [cg]
 
-    def load_cargo(self, payload='Cargo'):
+    def load_cargo(self, payload='Cargo', overload=False):
         # fwd -> aft
-        mass_fwd = cargo_mass
-        mass_aft = np.flip(mass_fwd)
+        mass_fwd = cargo_mass.copy()
+        mass_aft = np.flip(mass_fwd).copy()
+
         arm_fwd = cargo_arm
         arm_aft = np.flip(arm_fwd)
 
+        if overload:
+            max_cargo = plw - pax_n * pax_w
+            if max_cargo < np.sum(cargo_mass):
+                for m in (mass_fwd, mass_aft):
+                    capacity = np.cumsum(m) - max_cargo
+                    m[capacity > 0] -= capacity[capacity > 0]
+                    m[m < 0] = np.zeros(len(m[m < 0]))  # Not fill the rest cargo holds
         self.calculate(payload, mass_fwd, arm_fwd)
-        self.calculate(payload, mass_aft, arm_aft, loaded=True)
+        self.calculate(payload, mass_aft, arm_aft, loaded=True, fwd=False)
 
-    def load_pilot(self, payload='Pilot'):
-        mass = np.ones(2) * pilot_mass
-        arm = np.ones(2) * pilot_arm
-        self.calculate(payload, mass, arm, loaded=True)
+    def load_pilot(self, payload='Pilot', observer=False, loaded=True, fwd=True):
+        crew = 2 if not observer else 3
+        mass = np.ones(crew) * pilot_mass
+        arm = np.ones(crew) * pilot_arm
+        if observer:
+            mass[-1] = obs_mass
+            arm[-1] = obs_arm
+        self.calculate(payload, mass, arm, loaded=loaded, fwd=fwd)
 
-    def load_pax_w(self, pos, payload='Seats', n_row=18, w_pax=76.3):
-        n_seat = 2
+    def load_pax_w(self, pos, payload='Seats', n_seat=2, n_row=seat_row, w_pax=pax_w,
+                   seat_counter=None):
         payload = f'{payload} ({pos})'
 
         # fwd -> aft
         arm = np.arange(n_row) * pitch + first_arm
         mass = np.ones(n_row) * n_seat * w_pax  # No order
+        if seat_counter:
+            for r, n in seat_counter.items():
+                mass[r] = n * w_pax
         self.calculate(payload, mass, arm)
-        self.calculate(payload, mass, arm[::-1], loaded=True)
+        self.calculate(payload, mass[::-1], arm[::-1], loaded=True, fwd=False)
 
-    def load_fuel(self, payload='Fuel', fuel_limit=fw, load_limit=mtow):
-        fuel_arm = interp1d(fuel_quantity, fuel_h_arm)
+    def load_fuel(self, payload='Fuel', fuel_arm_curve='linear',
+                  fuel_limit=fw, load_limit=mtow, center_tank=False,
+                  loaded=True, fwd=True):
+        if center_tank:
+            fuel_arm = interp1d(fuel_center, fuel_center_index)
+        else:
+            fuel_arm = interp1d(fuel_wing, fuel_wing_index, kind=fuel_arm_curve)
 
         ava_fuel = min(load_limit - self.acc_mass, fuel_limit)
-        arm = fuel_arm(ava_fuel / 2)  # Divide fuel into two tanks
-        self.calculate(payload, ava_fuel, arm)
+        if ava_fuel <= 0:
+            return
+
+        fuel_load = np.linspace(0, ava_fuel, 10, retstep=True)
+
+        fuel_load, fuel_step = fuel_load[0][1:], fuel_load[1]
+        fuel_load_index = fuel_arm(fuel_load) * -1
+        print(fuel_load_index)
+
+        arm = index_to_arm(fuel_load + self.acc_mass, fuel_load_index)
+        print(arm)
+
+        fuel = np.ones(len(arm)) * fuel_step
+        # arm = fuel_arm(ava_fuel / 2)  # Divide fuel into two tanks
+        self.calculate(payload, fuel, arm, loaded=loaded, fwd=fwd)
 
     def load_standard(self):
-        self.load_cargo()
+        self.load_cargo(overload=True)
+        self.load_pilot(observer=True, loaded=False)
+        self.load_pilot(observer=True, fwd=False)
+        self.load_pax_w('window')
+        self.load_pax_w('aisle')
+        self.load_pax_w('middle', n_seat=1, n_row=seat_row - 1)
+        self.load_fuel('Fuel (wing)', fuel_arm_curve='quadratic', fuel_limit=fuel_wing_max, loaded=False)
+        self.load_fuel('Fuel (wing)', fuel_arm_curve='quadratic', fuel_limit=fuel_wing_max, fwd=False)
+
+        self.load_fuel('Fuel (center)', fuel_limit=fuel_center_max, center_tank=True, loaded=False)
+        self.load_fuel('Fuel (center)', fuel_limit=fuel_center_max, center_tank=True, fwd=False)
+
+    def load_modified(self):
+        self.load_cargo()  # Modified
         self.load_pilot()
         self.load_pax_w('window')
         self.load_pax_w('aisle')
-        self.load_fuel()
-
-    def load_modified(self):
-        self.load_cargo()
-        self.load_pilot()
-        self.load_pax_w('window', n_row=16)
-        self.load_pax_w('aisle', n_row=16)
+        self.load_pax_w('middle', n_seat=1, n_row=seat_row - 1)
         self.load_fuel()
 
     def plot(self, title='', overlay=False, save=None):
+        # Limit of plot range
+        x_lim = [((self.cg_min - self.margin) // 10 - 1) * 10,
+                 ((self.cg_max + self.margin) // 10 + 1) * 10]
+        y_lim = [oew // 2000 * 2000,
+                 (mtow // 8000 + 1) * 8000]
+
         if self.cmap == 'gray':
             colors = ['lightgray'] * len(self.load_mass)
             alpha = 0.4
@@ -106,52 +148,58 @@ class LoadDiagram:
             colors = color_map(np.arange(len(self.load_mass)))
             alpha = 1
 
+            # MTOW line
             plt.axhline(y=mtow, linestyle='dashed', color='tomato')
-            plt.text(71, 23000 - 150, 'MTOW')
-            plt.axhline(y=self.load_mass['Fuel'][0][0], linestyle='dashed', color='lightsalmon', alpha=0.7)
-            plt.text(71, self.load_mass['Fuel'][0][0] - 150, 'MZFW')
+            plt.text(x_lim[1] + 1, mtow - 150, 'MTOW')
 
+            # MZFW line
+            plt.axhline(y=self.load_mass['Fuel (wing)'][0][0], linestyle='dashed', color='lightsalmon', alpha=0.7)
+            plt.text(x_lim[1] + 1, self.load_mass['Fuel (wing)'][0][0] - 150, 'MZFW')
+
+        # Flip the plotting order (previous plotted line is on top)
         order = np.arange(1, len(self.load_mass) + 1)[::-1]
 
         ax = plt.subplot(111)
         for (l, m), cg, c, o in zip(self.load_mass.items(), self.load_cg.values(), colors, order):
-            b = 0
+            b = 0  # Check loading direction
             for lm, lcg in zip(m, cg):
                 line_style = '-o' if b == 0 else '-^'
-                label = '' if self.cmap == 'gray' else l
+                label = '' if self.cmap == 'gray' else l  # Hide label if overlaid
 
                 ax.plot(lcg, lm, line_style, color=c, label=label, zorder=o, alpha=alpha)
 
                 b += 1
 
         if overlay:
-            alpha = 0.4
+            # Draw two dummy points to manually add two legend labels
             plt.plot(-1, 1, '-o', color='lightgray', label='Original design', alpha=alpha)
             plt.plot(-1, 1, '-^', color='lightgray', label='Original design', alpha=alpha)
 
         if self.cmap != 'gray':
-            plt.xlim([0, 70])
-            y_low_lim = oew // 2000 * 2000
-            plt.ylim([y_low_lim, mtow // 2000 * 2000])
+            plt.xlim(x_lim)
+            plt.ylim(y_lim)
 
-            plt.plot(np.ones(2) * (self.cg_min - self.margin), [y_low_lim, mtow], '-.k', label='Min/Max CG')
-            plt.plot(np.ones(2) * (self.cg_max + self.margin), [y_low_lim, mtow], '-.k')
+            # Draw min / max CG lines
+            plt.plot(np.ones(2) * (self.cg_min - self.margin), [y_lim[0], mtow], '-.k', label='Min/Max CG')
+            plt.plot(np.ones(2) * (self.cg_max + self.margin), [y_lim[0], mtow], '-.k')
 
-            # Position legend
+            # Position legend at the bottom
             box = ax.get_position()
-            ax.set_position([box.x0, box.y0 + box.height * 0.14,
-                             box.width, box.height * 0.95])
-            plt.legend(loc='center', bbox_to_anchor=(0.5, -0.2), ncols=4)
+            ax.set_position([box.x0, box.y0 + box.height * 0.21,
+                             box.width, box.height * 0.85])
+            plt.legend(loc='center', bbox_to_anchor=(0.5, -0.25), ncols=4)
 
             # Position the legend on the right side
             # ax.set_position([box.x0, box.y0,
             #                  box.width * 0.8, box.height * 1.08])
             # plt.legend(loc='lower left', bbox_to_anchor=(1.02, 0))
 
+            # Minor locators and grid
             ax.xaxis.set_minor_locator(MultipleLocator(2.5))
             ax.yaxis.set_minor_locator(MultipleLocator(500))
             plt.grid()
 
+            # Axis label and title
             plt.xlabel(r'$x_{CG}$ [%MAC]')
             plt.ylabel('Mass [kg]')
             plt.title(title)
@@ -161,27 +209,20 @@ class LoadDiagram:
 
 
 if __name__ == '__main__':
-    # oew_o = 13294
-    oew_o = 13600
-    oew_arm_o = 31.36
+    fokker = Aircraft()
+    print(lemac_arm)
 
-    oew_n = mtow * 62.02339 / 100 + 306
-    # print(oew_n)
     # oew_arm_n = 44.5  # LEMAC -> 44.5% MAC
-    oew_arm_n = lemac(12.26682 + datum)
+    # oew_arm_n = lemac(12.26682 + datum)
 
     fig = plt.figure(figsize=(7, 6))
     # fig = plt.figure(figsize=(8, 6))  # Legend at right
 
     # Part I loading diagram
-    # ld_i = LoadDiagram(oew_o, oew_arm_o, cmap='Set2')
-    # ld_i.load_standard()
-    # # ld_i.plot('Loading diagram of ATR 72-600')
-    # print(ld_i.cg_min, ld_i.cg_max)
-    # print(ld_i.cg_min - 2, ld_i.cg_max + 2)
-    # # print(to_datum(np.array([ld_i.cg_min, ld_i.cg_max])))
-    # # print(to_datum(np.array([ld_i.cg_min - 2, ld_i.cg_max + 2])))
-    # ld_i.plot('Loading diagram of ATR 72-600', save='loading_diagram_600')
+    ld_i = LoadDiagram(oew, fokker.cg_oew, cmap='Set2')
+    ld_i.load_standard()
+    # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m')
+    ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m', save='loading_diagram_sep_I')
 
     # Setting for overlaid plot
     # ld_o = LoadDiagram(oew_o, oew_arm_o, cmap='gray')
@@ -192,11 +233,11 @@ if __name__ == '__main__':
     # ld_1.load_modified()
     # ld_1.plot()
     #
-    ld_n = LoadDiagram(oew_n, oew_arm_n, cmap='Set2')
-    ld_n.load_modified()
-    ld_n.plot('Loading diagram (modified design)', overlay=True)
-    print(ld_n.cg_min, ld_n.cg_max)
-    print(ld_n.cg_min - 2, ld_n.cg_max + 2)
+    # ld_n = LoadDiagram(oew, 79, cmap='Set2')
+    # ld_n.load_modified()
+    # ld_n.plot('Loading diagram (modified design)', overlay=True)
+    # print(ld_n.cg_min, ld_n.cg_max)
+    # print(ld_n.cg_min - 2, ld_n.cg_max + 2)
 
     # ld_e = LoadDiagram(oew_n, oew_arm_n)
     # ld_e.load_pilot()
