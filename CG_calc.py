@@ -10,7 +10,7 @@ def to_datum(arm):
 
 
 class Aircraft:
-    def __init__(self):
+    def __init__(self, mod=False):
         self.components = {'wing': 14.77,
                            'h tail': 1.37,
                            'v tail': 0.95,
@@ -26,35 +26,37 @@ class Aircraft:
         self.cg_pos()
 
         self.cg_group = {g: 0 for g in self.groups.keys()}
-        self.calc_cg_group()
 
         self.cg_oew = 0
+
+        if mod:
+            self.mod_oew()
+            self.oew = self.mod_oew()[1]
+        else:
+            self.oew = oew
+
+        self.calc_cgs()
+
+    def calc_cgs(self):
+        self.calc_cg_group()
         self.calc_cg_oew()
-
-    @staticmethod
-    def trans_top(x):
-        return x * 35.528 / 21.168  # m
-
-    @staticmethod
-    def trans_side(x):
-        return x * l_f / 20.029  # m
 
     def cg_pos(self):
         # m
-        self.cg_abs_pos = {'wing': [self.trans_top(10.663)],
-                           'h tail': [self.trans_top(19.879)],
-                           'v tail': [self.trans_side(19.2054372)],
+        self.cg_abs_pos = {'wing': [trans_top(10.663)],
+                           'h tail': [trans_top(19.879)],
+                           'v tail': [trans_side(19.2054372)],
                            'fuselage': [0.46 * l_f],
-                           'nose lg': [self.trans_side(2.272232562)],
-                           'main lg': [self.trans_side(2.272232562) + 14.006],
-                           'nacelle': [self.trans_side(15.0534649971)],
-                           'propulsion': [self.trans_side(15.0534649971)]}
+                           'nose lg': [trans_side(2.272232562)],
+                           'main lg': [trans_side(2.272232562) + 14.006],
+                           'nacelle': [trans_side(15.0534649971)],
+                           'propulsion': [trans_side(15.0534649971)]}
         for c, a in self.cg_abs_pos.items():
             self.cg_abs_pos[c].append(lemac(a[0]))
 
     @staticmethod
     def avg_cg(com_cg, com_weight):
-        return np.sum(com_cg.T * com_weight) / np.sum(com_weight)
+        return np.round(np.sum(com_cg.T * com_weight) / np.sum(com_weight), 3)
 
     def calc_cg_oew(self):
         cg_arm = np.vstack(list(self.cg_abs_pos.values()))
@@ -65,15 +67,12 @@ class Aircraft:
             cg_arm = np.vstack([self.cg_abs_pos[p][1] for p in c])
             self.cg_group[g] = self.avg_cg(cg_arm, np.array([self.components[j] for j in c]))
 
-    def modification(self):
-        modification = self.components.copy()
-        modification['wing'] *= 1.1
-        return modification
-
     def mod_oew(self):
+        modification = self.components
+        modification['wing'] *= 1.1
+
         misc_w = oew - np.sum(list(self.components.values())) / 100 * mtow
-        mod_component = self.modification()
-        mod_w = np.sum(list(mod_component.values())) / 100 * mtow + misc_w
+        mod_w = np.sum(list(modification.values())) / 100 * mtow + misc_w
         return misc_w, mod_w, mod_w - oew
 
 
@@ -82,5 +81,10 @@ if __name__ == '__main__':
     # print(ac.cg_abs_pos)
     print(ac.cg_group)
     print(ac.cg_oew)
-    print(ac.modification())
+    print(ac.components)
+    print()
     print(ac.mod_oew())
+    print(ac.components)
+    print(ac.calc_cgs())
+    print(ac.cg_group)
+    print(ac.cg_oew)
