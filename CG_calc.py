@@ -30,8 +30,8 @@ class Aircraft:
         self.cg_oew = 0
 
         if mod:
-            self.mod_oew()
-            self.oew = self.mod_oew()[1]
+            self.mod = self.mod_oew()
+            self.oew = self.mod[1]
         else:
             self.oew = oew
 
@@ -68,23 +68,26 @@ class Aircraft:
             self.cg_group[g] = self.avg_cg(cg_arm, np.array([self.components[j] for j in c]))
 
     def mod_oew(self):
-        modification = self.components
-        modification['wing'] *= 1.1
-
         misc_w = oew - np.sum(list(self.components.values())) / 100 * mtow
-        mod_w = np.sum(list(modification.values())) / 100 * mtow + misc_w
+        self.components['wing'] *= 1.1
+        mod_w = np.sum(list(self.components.values())) / 100 * mtow + misc_w
         return misc_w, mod_w, mod_w - oew
 
 
 if __name__ == '__main__':
-    ac = Aircraft()
-    # print(ac.cg_abs_pos)
-    print(ac.cg_group)
-    print(ac.cg_oew)
+    # ac = Aircraft()
+    # print(ac.cg_group)
+    # print(ac.cg_oew)
+    # print(ac.components)
+    # print()
+    # print(ac.mod_oew())
+    # print(ac.components)
+    # print(ac.calc_cgs())
+    # print(ac.cg_group)
+    # print(ac.cg_oew)
+    ac = Aircraft(mod=True)
     print(ac.components)
-    print()
-    print(ac.mod_oew())
-    print(ac.components)
-    print(ac.calc_cgs())
+    ac.calc_cgs()
+    print(ac.mod)
     print(ac.cg_group)
     print(ac.cg_oew)
