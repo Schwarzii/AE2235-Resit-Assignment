@@ -21,6 +21,8 @@ class LoadDiagram:
         self.cmap = cmap
         self.margin = margin
 
+        self.cg_range = np.array([self.cg_min - self.margin, self.cg_max + self.margin])
+
     def calculate(self, payload, mass, arm, arm_conversion=True, loaded=False, fwd=True):
         acc_mass = self.acc_mass + np.hstack([0, np.cumsum(mass)])
 
@@ -100,22 +102,21 @@ class LoadDiagram:
             return
 
         fuel_load = np.linspace(0, ava_fuel, 10, retstep=True)
+        # print(fuel_load)
 
         fuel_load, fuel_step = fuel_load[0][1:], fuel_load[1]
         fuel_load_index = fuel_arm(fuel_load) * -1
-        print(fuel_load_index)
 
         arm = index_to_arm(fuel_load + self.acc_mass, fuel_load_index)
-        print(arm)
 
         fuel = np.ones(len(arm)) * fuel_step
         # arm = fuel_arm(ava_fuel / 2)  # Divide fuel into two tanks
         self.calculate(payload, fuel, arm, loaded=loaded, fwd=fwd)
 
-    def load_standard(self):
-        self.load_cargo(overload=True)
-        self.load_pilot(observer=True, loaded=False)
-        self.load_pilot(observer=True, fwd=False)
+    def load_standard(self, observer=False, overload=False):
+        self.load_cargo(overload=overload)
+        self.load_pilot(observer=observer, loaded=False)
+        self.load_pilot(observer=observer, fwd=False)
         self.load_pax_w('window')
         self.load_pax_w('aisle')
         self.load_pax_w('middle', n_seat=1, n_row=seat_row - 1)
@@ -124,6 +125,7 @@ class LoadDiagram:
 
         self.load_fuel('Fuel (center)', fuel_limit=fuel_center_max, center_tank=True, loaded=False)
         self.load_fuel('Fuel (center)', fuel_limit=fuel_center_max, center_tank=True, fwd=False)
+        self.cg_range = np.array([self.cg_min - self.margin, self.cg_max + self.margin])
 
     def load_modified(self):
         self.load_cargo()  # Modified
@@ -161,14 +163,14 @@ class LoadDiagram:
 
         ax = plt.subplot(111)
         for (l, m), cg, c, o in zip(self.load_mass.items(), self.load_cg.values(), colors, order):
-            b = 0  # Check loading direction
+            back = 0  # Check loading direction
             for lm, lcg in zip(m, cg):
-                line_style = '-o' if b == 0 else '-^'
+                line_style = '-o' if back == 0 else '-^'
                 label = '' if self.cmap == 'gray' else l  # Hide label if overlaid
 
                 ax.plot(lcg, lm, line_style, color=c, label=label, zorder=o, alpha=alpha)
 
-                b += 1
+                back += 1
 
         if overlay:
             # Draw two dummy points to manually add two legend labels
@@ -194,7 +196,7 @@ class LoadDiagram:
             #                  box.width * 0.8, box.height * 1.08])
             # plt.legend(loc='lower left', bbox_to_anchor=(1.02, 0))
 
-            # Minor locators and grid
+            # Minor tickers and grid
             ax.xaxis.set_minor_locator(MultipleLocator(2.5))
             ax.yaxis.set_minor_locator(MultipleLocator(500))
             plt.grid()
@@ -219,10 +221,11 @@ if __name__ == '__main__':
     # fig = plt.figure(figsize=(8, 6))  # Legend at right
 
     # Part I loading diagram
-    ld_i = LoadDiagram(oew, fokker.cg_oew, cmap='Set2')
-    ld_i.load_standard()
-    # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m')
-    ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m', save='loading_diagram_sep_I')
+    ld_i = LoadDiagram(fokker.oew, fokker.cg_oew)
+    ld_i.load_standard(True, True)
+    ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m')
+    # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m', save='loading_diagram_sep_I')
+    print(ld_i.cg_range)
 
     # Setting for overlaid plot
     # ld_o = LoadDiagram(oew_o, oew_arm_o, cmap='gray')
