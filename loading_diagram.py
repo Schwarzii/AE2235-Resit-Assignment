@@ -49,7 +49,7 @@ class LoadDiagram:
             self.load_mass[payload] = [acc_mass]
             self.load_cg[payload] = [cg]
 
-    def load_cargo(self, payload='Cargo', overload=False):
+    def load_cargo(self, payload='Cargo', overload=False, max_cargo=plw - pax_n * pax_w):
         # fwd -> aft
         mass_fwd = cargo_mass.copy()
         mass_aft = np.flip(mass_fwd).copy()
@@ -57,13 +57,13 @@ class LoadDiagram:
         arm_fwd = cargo_arm
         arm_aft = np.flip(arm_fwd)
 
-        if overload:
-            max_cargo = plw - pax_n * pax_w
-            if max_cargo < np.sum(cargo_mass):
-                for m in (mass_fwd, mass_aft):
-                    capacity = np.cumsum(m) - max_cargo
-                    m[capacity > 0] -= capacity[capacity > 0]
-                    m[m < 0] = np.zeros(len(m[m < 0]))  # Not fill the rest cargo holds
+        max_cargo = int(max_cargo)
+        if overload and max_cargo < np.sum(cargo_mass):
+            for m in (mass_fwd, mass_aft):
+                capacity = np.cumsum(m) - max_cargo
+                print(capacity)
+                m[capacity > 0] -= capacity[capacity > 0]
+                m[m < 0] = np.zeros(len(m[m < 0]))  # Not fill the rest cargo holds
         self.calculate(payload, mass_fwd, arm_fwd)
         self.calculate(payload, mass_aft, arm_aft, loaded=True, fwd=False)
 
@@ -113,8 +113,7 @@ class LoadDiagram:
         # arm = fuel_arm(ava_fuel / 2)  # Divide fuel into two tanks
         self.calculate(payload, fuel, arm, loaded=loaded, fwd=fwd)
 
-    def load_standard(self, observer=False, overload=False):
-        self.load_cargo(overload=overload)
+    def load_seq(self, observer=False):
         self.load_pilot(observer=observer, loaded=False)
         self.load_pilot(observer=observer, fwd=False)
         self.load_pax_w('window')
@@ -127,13 +126,14 @@ class LoadDiagram:
         self.load_fuel('Fuel (center)', fuel_limit=fuel_center_max, center_tank=True, fwd=False)
         self.cg_range = np.array([self.cg_min - self.margin, self.cg_max + self.margin])
 
-    def load_modified(self):
-        self.load_cargo()  # Modified
-        self.load_pilot()
-        self.load_pax_w('window')
-        self.load_pax_w('aisle')
-        self.load_pax_w('middle', n_seat=1, n_row=seat_row - 1)
-        self.load_fuel()
+    def load_standard(self, observer=False, overload=False):
+        self.load_cargo(overload=overload)
+        self.load_seq(observer)
+
+    def load_modified(self, observer=False, overload=False, oew_change=0):
+        print(oew_change)
+        self.load_cargo(overload=overload, max_cargo=(plw - oew_change) - pax_n * pax_w)  # Modified
+        self.load_seq(observer)
 
     def plot(self, title='', overlay=False, save=None):
         # Limit of plot range
@@ -187,9 +187,9 @@ class LoadDiagram:
 
             # Position legend at the bottom
             box = ax.get_position()
-            ax.set_position([box.x0, box.y0 + box.height * 0.21,
+            ax.set_position([box.x0, box.y0 + box.height * 0.22,
                              box.width, box.height * 0.85])
-            plt.legend(loc='center', bbox_to_anchor=(0.5, -0.25), ncols=4)
+            plt.legend(loc='center', bbox_to_anchor=(0.5, -0.26), ncols=4)
 
             # Position the legend on the right side
             # ax.set_position([box.x0, box.y0,
@@ -211,41 +211,29 @@ class LoadDiagram:
 
 
 if __name__ == '__main__':
-    fokker = Aircraft()
-    print(lemac_arm)
-
-    # oew_arm_n = 44.5  # LEMAC -> 44.5% MAC
-    # oew_arm_n = lemac(12.26682 + datum)
-
     fig = plt.figure(figsize=(7, 6))
     # fig = plt.figure(figsize=(8, 6))  # Legend at right
 
-    # Part I loading diagram
-    ld_i = LoadDiagram(fokker.oew, fokker.cg_oew)
-    ld_i.load_standard(True, True)
-    ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m')
+    fokker = Aircraft()
+    fokker_mod = Aircraft(mod=True)
+
+    # # Part I loading diagram
+    # ld_i = LoadDiagram(fokker.oew, fokker.cg_oew)
+    # ld_i.load_standard(True, True)
+    # # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m')
     # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m', save='loading_diagram_sep_I')
-    print(ld_i.cg_range)
 
+    # Part II loading diagram
     # Setting for overlaid plot
-    # ld_o = LoadDiagram(oew_o, oew_arm_o, cmap='gray')
-    # ld_o.load_standard()
-    # ld_o.plot()
+    ld_o = LoadDiagram(fokker.oew, fokker.cg_oew, cmap='gray')
+    ld_o.load_standard(True, True)
+    ld_o.plot()
 
-    # ld_1 = LoadDiagram(oew_n, oew_arm_n, cmap='gray')
-    # ld_1.load_modified()
-    # ld_1.plot()
-    #
-    # ld_n = LoadDiagram(oew, 79, cmap='Set2')
-    # ld_n.load_modified()
-    # ld_n.plot('Loading diagram (modified design)', overlay=True)
+    ld_n = LoadDiagram(fokker_mod.oew, fokker_mod.cg_oew)
+    ld_n.load_modified(True, True, fokker_mod.mod[2])
+    # ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True)
+    ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True, save='loading_diagram_sep_II')
     # print(ld_n.cg_min, ld_n.cg_max)
     # print(ld_n.cg_min - 2, ld_n.cg_max + 2)
-
-    # ld_e = LoadDiagram(oew_n, oew_arm_n)
-    # ld_e.load_pilot()
-    # ld_e.load_cargo()
-    # ld_e.load_fuel()
-    # ld_e.plot()
 
     plt.show()
