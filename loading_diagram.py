@@ -185,16 +185,16 @@ class LoadDiagram:
             plt.plot(np.ones(2) * (self.cg_min - self.margin), [y_lim[0], mtow], '-.k', label='Min/Max CG')
             plt.plot(np.ones(2) * (self.cg_max + self.margin), [y_lim[0], mtow], '-.k')
 
-            # Position legend at the bottom
             box = ax.get_position()
-            ax.set_position([box.x0, box.y0 + box.height * 0.22,
-                             box.width, box.height * 0.85])
-            plt.legend(loc='center', bbox_to_anchor=(0.5, -0.26), ncols=4)
+            # Position legend at the bottom
+            # ax.set_position([box.x0, box.y0 + box.height * 0.22,
+            #                  box.width, box.height * 0.85])
+            # plt.legend(loc='center', bbox_to_anchor=(0.5, -0.26), ncols=4)
 
             # Position the legend on the right side
-            # ax.set_position([box.x0, box.y0,
-            #                  box.width * 0.8, box.height * 1.08])
-            # plt.legend(loc='lower left', bbox_to_anchor=(1.02, 0))
+            ax.set_position([box.x0 - box.width * 0.03, box.y0,
+                             box.width * 0.8, box.height * 1.08])
+            plt.legend(loc='lower left', bbox_to_anchor=(1.12, 0))
 
             # Minor tickers and grid
             ax.xaxis.set_minor_locator(MultipleLocator(2.5))
@@ -211,8 +211,8 @@ class LoadDiagram:
 
 
 if __name__ == '__main__':
-    fig = plt.figure(figsize=(7, 6))
-    # fig = plt.figure(figsize=(8, 6))  # Legend at right
+    # fig = plt.figure(figsize=(7, 6))
+    fig = plt.figure(figsize=(9, 5))  # Legend at right
 
     fokker = Aircraft()
     fokker_mod = Aircraft(mod=True)
@@ -221,7 +221,7 @@ if __name__ == '__main__':
     # ld_i = LoadDiagram(fokker.oew, fokker.cg_oew)
     # ld_i.load_standard(True, True)
     # # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m')
-    # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m', save='loading_diagram_sep_I')
+    # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m', save='loading_diagram_sep_I_r')
 
     # Part II loading diagram
     # Setting for overlaid plot
@@ -232,8 +232,6 @@ if __name__ == '__main__':
     ld_n = LoadDiagram(fokker_mod.oew, fokker_mod.cg_oew)
     ld_n.load_modified(True, True, fokker_mod.mod[2])
     # ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True)
-    ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True, save='loading_diagram_sep_II')
-    # print(ld_n.cg_min, ld_n.cg_max)
-    # print(ld_n.cg_min - 2, ld_n.cg_max + 2)
+    ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True, save='loading_diagram_sep_II_r')
 
     plt.show()
