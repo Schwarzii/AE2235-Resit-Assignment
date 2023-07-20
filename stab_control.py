@@ -6,8 +6,8 @@ from CG_calc import Aircraft
 
 
 class Stability:
-    def __init__(self, eta=0.95, margin=5):
-        self.wing_ac = 0.25  # Assumed aerodynamic center of wing
+    def __init__(self, mod=False, eta=0.95, margin=5):
+        self.wing_ac = 30 if not mod else 32  # %MAC, aerodynamic center of wing, see slide
 
         self.eta = eta  # Wing's efficiency, assumed constant
         self.beta = np.sqrt(1 - mach ** 2)
@@ -16,8 +16,10 @@ class Stability:
         self.r = l_h / (b / 2)
         self.m_tv = trans_side(3.670914406) / (b / 2)
 
-        self.beta_a = self.beta * ar
+        self.ar = ar_mod if mod else ar
+        self.beta_a = self.beta * self.ar
         self.lambda_beta = np.degrees(np.arctan(np.tan(sweep_quarter) / self.beta))
+        print(self.beta_a, self.lambda_beta)
 
         self.margin = margin
 
@@ -33,15 +35,14 @@ class Stability:
         return self.cl_alpha_w() * (1 + 2.15 * b_f / b) * s_net / s + np.pi / 2 * b_f ** 2 / s
 
     def cl_alpha_w(self):
-        return 2 * np.pi * ar / (2 + np.sqrt(4 + (ar * self.beta / self.eta) ** 2 *
-                                             (1 + np.tan(sweep_half) ** 2 / (self.beta ** 2))))
+        return 2 * np.pi * self.ar / (2 + np.sqrt(4 + (self.ar * self.beta / self.eta) ** 2 *
+                                                  (1 + np.tan(sweep_half) ** 2 / (self.beta ** 2))))
 
     def cl_alpha_h(self):
         return 2 * np.pi * ar_h / (2 + np.sqrt(4 + (ar_h * self.beta / self.eta) ** 2 *
                                                (1 + np.tan(sweep_h) ** 2 / (self.beta ** 2))))
 
     def aero_center(self):
-        self.wing_ac = 28.5  # %MAC See slide
         fus_ac_1 = -1.8 / self.cl_alpha_ah() * b_f * h_f * l_fn / (s * mac)
         fus_ac_2 = 0.273 / (1 + taper) * b_f * s / b * (b - b_f) / (mac ** 2 * (b + 2.15 * b_f)) * np.tan(sweep_quarter)
         nacelle_ac = -2.5 * b_n ** 2 * l_n / (s * mac * self.cl_alpha_ah()) * 2
@@ -52,14 +53,14 @@ class Stability:
         msq = self.m_tv ** 2
         k_ep_lambda = (0.1124 + 0.1265 * sweep_quarter + 0.1766 * sweep_quarter ** 2) / rsq + 0.1024 / self.r + 2
         k_ep_lambda0 = 0.1124 / rsq + 0.1024 / self.r + 2
-        return k_ep_lambda / k_ep_lambda0 * self.cl_alpha_w() / (np.pi * ar) * (
+        return k_ep_lambda / k_ep_lambda0 * self.cl_alpha_w() / (np.pi * self.ar) * (
                 self.r / (rsq + msq) * 0.4876 / np.sqrt(rsq + 0.6319 + msq) +
                 (1 + (rsq / (rsq + 0.7915 + 5.0734 * msq)) ** 0.3113) * (1 - np.sqrt(msq / (1 + msq))))
 
 
 class Controllability(Stability):
-    def __init__(self, eta=0.95, margin=5):
-        super().__init__(eta, margin)
+    def __init__(self, mod=False, eta=0.95, margin=5):
+        super().__init__(mod, eta, margin)
         self.cl_h = -0.35 * ar_h ** (1 / 3)  # Fixed tail
         self.cm_airfoil = -0.025  # NACA 1408, AOA = 0
         self.cl_0 = 0.372  # Zero AOA lift
@@ -78,7 +79,7 @@ class Controllability(Stability):
         return mlw_n / (0.5 * rho_0 * v_app ** 2 * s)
 
     def cm_ac(self):
-        cm_w = self.cm_airfoil * ar * np.cos(sweep_quarter) ** 2 / (ar + 2 * np.cos(sweep_quarter))
+        cm_w = self.cm_airfoil * self.ar * np.cos(sweep_quarter) ** 2 / (self.ar + 2 * np.cos(sweep_quarter))
         cm_fus = -1.8 * (1 - 2.5 * b_f / l_f) * np.pi * b_f * h_f * l_f / (4 * s * mac) * self.cl_0 / self.cl_alpha_ah()
         cm_flap = -0.35  # See slide
         return cm_w + cm_fus + cm_flap
@@ -87,43 +88,41 @@ class Controllability(Stability):
 class ScissorPlot:
     def __init__(self, mod=False, cmap_top='Set2', cmap_bottom='Pastel2'):
         self.cg = np.array([-10, 120])
-        self.stab_neutral = Stability(margin=0)
-        self.stab = Stability()
-        self.control = Controllability()
+        self.stab = Stability(mod=mod)
+        self.stab_neutral = Stability(mod=mod, margin=0)
+        self.control = Controllability(mod=mod)
 
-        self.lines = {'Stability': self.stab.stab_line(self.cg),
-                      'Neutral stability': self.stab_neutral.stab_line(self.cg),
-                      'Controllability': self.control.control_line(self.cg)}
+        if mod:
+            self.lines = {'Stability (modified)': self.stab.stab_line(self.cg),
+                          'Neutral stability (modified)': self.stab_neutral.stab_line(self.cg),
+                          'Controllability (modified)': self.control.control_line(self.cg)}
+        else:
+            self.lines = {'Stability': self.stab.stab_line(self.cg),
+                          'Neutral stability': self.stab_neutral.stab_line(self.cg),
+                          'Controllability': self.control.control_line(self.cg)}
 
-        self.cmap = [cmap_top, cmap_bottom]  # Set2 if not overlay, else Pastel2
+        self.cmap = [cmap_bottom, cmap_top]  # Set2 if not overlay, else Pastel2
         self.cg_range = None
         self.mod = mod
 
-    def ac_cg_range(self, ac_oew, oew_cg):
+    def ac_cg_range(self, ac_oew, oew_cg, oew_change=0):
         ld = LoadDiagram(ac_oew, oew_cg)
         if self.mod:
-            ld.load_modified()
+            ld.load_modified(True, True, oew_change)
         else:
             ld.load_standard(True, True)
         self.cg_range = ld.cg_range
         print(self.cg_range)
 
-    def plot(self, title='', overlay=False, save=None):
+    def plot(self, title='', overlay=True, save=None, long_legend=False):
         x_lim = [0, 100]
         plt.xlim(x_lim)
         plt.ylim([0, 0.4])
 
         color_map = plt.get_cmap(self.cmap[overlay])
         colors = color_map(np.arange(len(self.lines)))
-        alpha = 0.4 if overlay else 1
+        alpha = 1 if overlay else 0.4
 
-        # # MTOW line
-        # plt.axhline(y=mtow, linestyle='dashed', color='tomato')
-        # plt.text(x_lim[1] + 1, mtow - 150, 'MTOW')
-        #
-        # # MZFW line
-        # plt.axhline(y=self.load_mass['Fuel (wing)'][0][0], linestyle='dashed', color='lightsalmon', alpha=0.7)
-        # plt.text(x_lim[1] + 1, self.load_mass['Fuel (wing)'][0][0] - 150, 'MZFW')
         ax = plt.subplot(111)
         for (n, line), c in zip(self.lines.items(), colors):
             ax.plot(self.cg, line, color=c, label=n, alpha=alpha)
@@ -141,14 +140,21 @@ class ScissorPlot:
                 label = 'CG range (modified)'
             else:
                 label = 'CG range (reference)'
-            ax.plot(self.cg_range, [s_ratio] * 2, '-xk', label=label)
+            if overlay:
+                ax.plot(self.cg_range, [s_ratio] * 2, '-xk', label=label)
+            else:
+                ax.plot(self.cg_range, [s_ratio] * 2, '-x', color='gray', label=label, alpha=0.6)
 
-        plt.legend()
+        if long_legend:
+            plt.legend(loc='center', bbox_to_anchor=(0.5, 0.85), ncols=2)
+        else:
+            plt.legend(loc='upper left')
 
         # Minor tickers and grid
         ax.xaxis.set_minor_locator(MultipleLocator(2.5))
         ax.yaxis.set_minor_locator(MultipleLocator(0.01))
-        plt.grid()
+        if overlay:
+            ax.grid()
 
         # Axis label and title
         plt.xlabel(r'$x_{CG}$ [% MAC]')
@@ -161,13 +167,25 @@ class ScissorPlot:
 
 
 if __name__ == '__main__':
-    fig = plt.figure(figsize=(6, 4))
+    fig = plt.figure(figsize=(6.5, 4.5))
 
     fokker = Aircraft()
+    fokker_mod = Aircraft(mod=True)
 
-    sp = ScissorPlot()
-    sp.ac_cg_range(fokker.oew, fokker.cg_oew)
-    # sp.plot('Scissor plot of Fokker 100')
-    sp.plot('Scissor plot of Fokker 100', save='scissor_plot_I')
+    # # Part I scissor plot
+    # sp = ScissorPlot()
+    # sp.ac_cg_range(fokker.oew, fokker.cg_oew)
+    # # sp.plot('Scissor plot of Fokker 100')
+    # sp.plot('Scissor plot of Fokker 100', save='scissor_plot_I')
+
+    # Part II scissor plot
+    sp_o = ScissorPlot()
+    sp_o.ac_cg_range(fokker.oew, fokker.cg_oew)
+    sp_o.plot(overlay=False)
+
+    sp_n = ScissorPlot(mod=True)
+    sp_n.ac_cg_range(fokker_mod.oew, fokker_mod.cg_oew, fokker_mod.mod[2])
+    # sp_n.plot('Scissor plot of Fokker 120 (modified design)', long_legend=True)
+    sp_n.plot('Scissor plot of Fokker 120 (modified design)', long_legend=True, save='scissor_plot_II')
 
     plt.show()
