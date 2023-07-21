@@ -11,15 +11,20 @@ class Stability:
 
         self.eta = eta  # Wing's efficiency, assumed constant
         self.beta = np.sqrt(1 - mach ** 2)
+        # print('b', self.beta)
         self.v_ratio = 1  # Speed ratio between wing and tail, assumed to 1 due to T-tail
 
         self.r = l_h / (b / 2)
-        self.m_tv = trans_side(3.670914406) / (b / 2)
+        # print(self.r)
+        l_v = trans_side(3.670914406)
+        # print('lv', l_v)
+        self.m_tv = l_v / (b / 2)
+        # print(self.m_tv)
 
         self.ar = ar_mod if mod else ar
         self.beta_a = self.beta * self.ar
         self.lambda_beta = np.degrees(np.arctan(np.tan(sweep_quarter) / self.beta))
-        print(self.beta_a, self.lambda_beta)
+        # print(round(self.beta_a, 2), round(self.lambda_beta, 2))
 
         self.margin = margin
 
@@ -29,7 +34,11 @@ class Stability:
         # cl_ratio = (4.17 / 3.8)
         # self.aero_center = 14.18
         # return (cg - (14.18 - self.margin)) / (cl_ratio * (1 - self.downwash()) * 13.56 / 2.303 * self.v_ratio ** 2)
-        return (cg - (self.aero_center() - self.margin)) / (cl_ratio * (1 - 0) * tail_arm * self.v_ratio ** 2) / 100
+
+        # print(self.cl_alpha_ah(), self.cl_alpha_w(), self.cl_alpha_h())
+        # print('epsilon', self.downwash())
+        # print('ac', self.aero_center())
+        return (cg - (self.aero_center() - self.margin)) / (cl_ratio * (1 - self.downwash()) * tail_arm * self.v_ratio ** 2) / 100
 
     def cl_alpha_ah(self):
         return self.cl_alpha_w() * (1 + 2.15 * b_f / b) * s_net / s + np.pi / 2 * b_f ** 2 / s
@@ -46,6 +55,7 @@ class Stability:
         fus_ac_1 = -1.8 / self.cl_alpha_ah() * b_f * h_f * l_fn / (s * mac)
         fus_ac_2 = 0.273 / (1 + taper) * b_f * s / b * (b - b_f) / (mac ** 2 * (b + 2.15 * b_f)) * np.tan(sweep_quarter)
         nacelle_ac = -2.5 * b_n ** 2 * l_n / (s * mac * self.cl_alpha_ah()) * 2
+        # print('acc', self.ar, fus_ac_1, fus_ac_2, nacelle_ac)
         return self.wing_ac + fus_ac_1 + fus_ac_2 + nacelle_ac
 
     def downwash(self):
@@ -66,12 +76,16 @@ class Controllability(Stability):
         self.cl_0 = 0.372  # Zero AOA lift
         # v_app = 61.67
         self.beta = np.sqrt(1 - (v_app / a_0) ** 2)
+        # print('bc', self.beta)
 
     def control_line(self, cg):
         cl_ah = self.cl() - self.cl_h
+        # print(cl_ah, self.cl(), self.cl_h)
         cl_ratio = self.cl_h / cl_ah
         tail_arm = l_h / mac
         # return (cg - 0.065 / 2.34 - 14.18) / (-0.8 / 2.34 * 13.56 / 2.303 * self.v_ratio ** 2)
+
+        print(self.cm_ac())
         return (cg + self.cm_ac() / cl_ah - self.aero_center()) / (cl_ratio * tail_arm * self.v_ratio ** 2) / 100
 
     @staticmethod
@@ -81,7 +95,9 @@ class Controllability(Stability):
     def cm_ac(self):
         cm_w = self.cm_airfoil * self.ar * np.cos(sweep_quarter) ** 2 / (self.ar + 2 * np.cos(sweep_quarter))
         cm_fus = -1.8 * (1 - 2.5 * b_f / l_f) * np.pi * b_f * h_f * l_f / (4 * s * mac) * self.cl_0 / self.cl_alpha_ah()
+        # print(self.cl_alpha_ah())
         cm_flap = -0.35  # See slide
+        print(cm_w, cm_fus)
         return cm_w + cm_fus + cm_flap
 
 
@@ -117,7 +133,7 @@ class ScissorPlot:
     def plot(self, title='', overlay=True, save=None, long_legend=False):
         x_lim = [0, 100]
         plt.xlim(x_lim)
-        plt.ylim([0, 0.4])
+        plt.ylim([0, 0.55])
 
         color_map = plt.get_cmap(self.cmap[overlay])
         colors = color_map(np.arange(len(self.lines)))
@@ -135,7 +151,9 @@ class ScissorPlot:
             min_cg, max_cg = self.cg_range
             s_control = self.control.control_line(min_cg)
             s_stab = self.stab.stab_line(max_cg)
-            s_ratio = max(s_control, s_stab)
+            s_ratio = max(s_control * 1.15, s_stab * 1.15, s_h_ratio)
+            # s_ratio = max(s_control, s_stab)
+            print('s_ratio', s_ratio)
             if self.mod:
                 label = 'CG range (modified)'
             else:
@@ -172,20 +190,20 @@ if __name__ == '__main__':
     fokker = Aircraft()
     fokker_mod = Aircraft(mod=True)
 
-    # # Part I scissor plot
+    # Part I scissor plot
     # sp = ScissorPlot()
     # sp.ac_cg_range(fokker.oew, fokker.cg_oew)
-    # # sp.plot('Scissor plot of Fokker 100')
+    # sp.plot('Scissor plot of Fokker 100')
     # sp.plot('Scissor plot of Fokker 100', save='scissor_plot_I')
 
     # Part II scissor plot
     sp_o = ScissorPlot()
     sp_o.ac_cg_range(fokker.oew, fokker.cg_oew)
-    sp_o.plot(overlay=False)
+    # sp_o.plot(overlay=False)
 
     sp_n = ScissorPlot(mod=True)
     sp_n.ac_cg_range(fokker_mod.oew, fokker_mod.cg_oew, fokker_mod.mod[2])
     # sp_n.plot('Scissor plot of Fokker 120 (modified design)', long_legend=True)
-    sp_n.plot('Scissor plot of Fokker 120 (modified design)', long_legend=True, save='scissor_plot_II')
+    # sp_n.plot('Scissor plot of Fokker 120 (modified design)', long_legend=True, save='scissor_plot_II')
 
     plt.show()
