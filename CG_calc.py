@@ -25,9 +25,10 @@ class Aircraft:
         self.cg_abs_pos = {}
         self.cg_pos()
 
-        self.cg_group = {g: 0 for g in self.groups.keys()}
+        self.cg_group = {g: [0, 0] for g in self.groups.keys()}
 
         self.cg_oew = 0
+        self.cg_oew_abs = 0
 
         if mod:
             self.mod = self.mod_oew()
@@ -52,20 +53,23 @@ class Aircraft:
                            'nacelle': [trans_side(15.0534649971)],
                            'propulsion': [trans_side(15.0534649971)]}
         for c, a in self.cg_abs_pos.items():
-            self.cg_abs_pos[c].append(lemac(a[0]))
+            self.cg_abs_pos[c].append(round(lemac(a[0]), 2))
+            self.cg_abs_pos[c][0] = round(a[0] / mac * 100, 2)
 
     @staticmethod
     def avg_cg(com_cg, com_weight):
-        return np.round(np.sum(com_cg.T * com_weight) / np.sum(com_weight), 3)
+        return np.round(np.sum(com_cg.T * com_weight) / np.sum(com_weight), 2)
 
     def calc_cg_oew(self):
         cg_arm = np.vstack(list(self.cg_abs_pos.values()))
         self.cg_oew = self.avg_cg(cg_arm[:, 1], np.array(list(self.components.values())))
+        self.cg_oew_abs = round((self.cg_oew * mac / 100 + lemac_arm) / mac * 100, 2)
 
     def calc_cg_group(self):
         for g, c in self.groups.items():
-            cg_arm = np.vstack([self.cg_abs_pos[p][1] for p in c])
-            self.cg_group[g] = self.avg_cg(cg_arm, np.array([self.components[j] for j in c]))
+            for ss in range(2):
+                cg_arm = np.vstack([self.cg_abs_pos[p][ss] for p in c])
+                self.cg_group[g][ss] = self.avg_cg(cg_arm, np.array([self.components[j] for j in c]))
 
     def mod_oew(self):
         misc_w = oew - np.sum(list(self.components.values())) / 100 * mtow
@@ -78,7 +82,8 @@ if __name__ == '__main__':
     # ac = Aircraft()
     # print(ac.cg_group)
     # print(ac.cg_oew)
-    # print(ac.components)
+    # print(ac.cg_oew_abs)
+    # print(ac.cg_abs_pos)
     # print()
     # print(ac.mod_oew())
     # print(ac.components)
@@ -87,7 +92,7 @@ if __name__ == '__main__':
     # print(ac.cg_oew)
     ac = Aircraft(mod=True)
     print(ac.components)
-    ac.calc_cgs()
     print(ac.mod)
     print(ac.cg_group)
     print(ac.cg_oew)
+    print(ac.cg_oew_abs)
