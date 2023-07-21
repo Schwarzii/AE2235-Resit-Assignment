@@ -21,7 +21,7 @@ class LoadDiagram:
         self.cmap = cmap
         self.margin = margin
 
-        self.cg_range = np.array([self.cg_min - self.margin, self.cg_max + self.margin])
+        self.cg_range = np.round(np.array([self.cg_min - self.margin, self.cg_max + self.margin]), 2)
 
     def calculate(self, payload, mass, arm, arm_conversion=True, loaded=False, fwd=True):
         acc_mass = self.acc_mass + np.hstack([0, np.cumsum(mass)])
@@ -61,7 +61,6 @@ class LoadDiagram:
         if overload and max_cargo < np.sum(cargo_mass):
             for m in (mass_fwd, mass_aft):
                 capacity = np.cumsum(m) - max_cargo
-                print(capacity)
                 m[capacity > 0] -= capacity[capacity > 0]
                 m[m < 0] = np.zeros(len(m[m < 0]))  # Not fill the rest cargo holds
         self.calculate(payload, mass_fwd, arm_fwd)
@@ -124,7 +123,7 @@ class LoadDiagram:
 
         self.load_fuel('Fuel (center)', fuel_limit=fuel_center_max, center_tank=True, loaded=False)
         self.load_fuel('Fuel (center)', fuel_limit=fuel_center_max, center_tank=True, fwd=False)
-        self.cg_range = np.array([self.cg_min - self.margin, self.cg_max + self.margin])
+        self.cg_range = np.round(np.array([self.cg_min - self.margin, self.cg_max + self.margin]), 2)
 
     def load_standard(self, observer=False, overload=False):
         self.load_cargo(overload=overload)
@@ -168,7 +167,10 @@ class LoadDiagram:
                 line_style = '-o' if back == 0 else '-^'
                 label = '' if self.cmap == 'gray' else l  # Hide label if overlaid
 
-                ax.plot(lcg, lm, line_style, color=c, label=label, zorder=o, alpha=alpha)
+                if label == 'OEW':
+                    ax.plot(lcg, lm, 'o', color=c, label=label, zorder=o, alpha=alpha)
+                else:
+                    ax.plot(lcg, lm, line_style, color=c, label=label, zorder=o, alpha=alpha)
 
                 back += 1
 
@@ -217,21 +219,22 @@ if __name__ == '__main__':
     fokker = Aircraft()
     fokker_mod = Aircraft(mod=True)
 
-    # # Part I loading diagram
-    # ld_i = LoadDiagram(fokker.oew, fokker.cg_oew)
-    # ld_i.load_standard(True, True)
-    # # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m')
+    # Part I loading diagram
+    ld_i = LoadDiagram(fokker.oew, fokker.cg_oew)
+    ld_i.load_standard(True, True)
+    print(ld_i.cg_range)
+    # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m')
     # ld_i.plot(f'Loading diagram of Fokker 100, LEMAC @ {round(lemac_arm, 2)} m', save='loading_diagram_sep_I_r')
 
-    # Part II loading diagram
-    # Setting for overlaid plot
-    ld_o = LoadDiagram(fokker.oew, fokker.cg_oew, cmap='gray')
-    ld_o.load_standard(True, True)
-    ld_o.plot()
-
-    ld_n = LoadDiagram(fokker_mod.oew, fokker_mod.cg_oew)
-    ld_n.load_modified(True, True, fokker_mod.mod[2])
-    # ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True)
-    ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True, save='loading_diagram_sep_II_r')
+    # # Part II loading diagram
+    # # Setting for overlaid plot
+    # ld_o = LoadDiagram(fokker.oew, fokker.cg_oew, cmap='gray')
+    # ld_o.load_standard(True, True)
+    # ld_o.plot()
+    #
+    # ld_n = LoadDiagram(fokker_mod.oew, fokker_mod.cg_oew)
+    # ld_n.load_modified(True, True, fokker_mod.mod[2])
+    # # ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True)
+    # ld_n.plot('Loading diagram of Fokker 120 (modified design)', overlay=True, save='loading_diagram_sep_II_r')
 
     plt.show()
