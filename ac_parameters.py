@@ -68,7 +68,8 @@ ar_mod = (1 + 0.3) * ar  # -, aspect ratio of wing after modification
 b_h = 10.04  # m, wing span of h tail
 b_f = 3.3  # m, fuselage diameter
 b_n = trans_top(0.9028428563)  # m, width of nacelle
-s_h = 0.232 * s  # m^2, area of h tail
+s_h_ratio = 0.232
+s_h = s_h_ratio * s  # m^2, area of h tail
 ar_h = 4.64  # -, aspect ratio of h tail
 h_f = b_f  # m, height of fuselage = fuselage diameter
 taper = 0.235  # -, taper ratio
